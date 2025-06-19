@@ -32,6 +32,7 @@ async function run() {
         await client.connect();
         const database = client.db('roadmapDB')
         const userCollection = database.collection('users')
+        const postCollection = database.collection('posts')
 
         // save all logged in user in the database
         app.post('/users', async (req, res) => {
@@ -64,6 +65,97 @@ async function run() {
             const { email } = req.params
             const result = await userCollection.findOne({ email })
             res.send(result);
+        })
+
+        // Creating a Post
+        app.post('/post', async (req, res) => {
+            const data = req.body
+            const result = await postCollection.insertOne(data)
+            res.send(result)
+        })
+
+        app.get('/post', async (req, res) => {
+            const result = await database.collection('posts').find().toArray()
+            res.send(result)
+        })
+        // Get single post by id
+        // app.get('/single-post/:id', async (req, res) => {
+        //     const { id } = req.params
+        //     const result = await database.collection('posts').findOne({ _id: ObjectId(id) })
+        //     res.send(result)
+        // })
+
+        app.put('/posts/:id', async (req, res) => {
+            const { id } = req.params
+            const post = req.body
+            const result = await database.collection('posts').updateOne({ _id: ObjectId(id) }, { $set: post })
+            res.send(result)
+        })
+
+        app.delete('/posts/:id', async (req, res) => {
+            const { id } = req.params
+            const result = await database.collection('posts').deleteOne({ _id: ObjectId(id) })
+            res.send(result)
+        })
+
+        app.patch('/posts/like/:id', async (req, res) => {
+            const { id } = req.params
+            const { userEmail } = req.body
+            if (!userEmail) return res.status(400).send({ message: "No user email provided" });
+            const postId = { _id: new ObjectId(id) }
+            const post = await postCollection.findOne(postId)
+            if (!post) return res.status(404).send({ message: "Post not found" });
+            let updateLike = [...(post.likes || [])]
+            let updateDislike = [...(post.dislikes || [])]
+            const alreadyLiked = updateLike.includes(userEmail)
+            if (alreadyLiked) {
+                updateLike = updateLike.filter(email => email !== userEmail)
+            } else {
+                updateLike.push(userEmail)
+                updateDislike = updateDislike.filter(email => email !== userEmail);
+            }
+            await postCollection.updateOne(
+                postId,
+                { $set: { likes: updateLike, dislike: updateDislike } },
+                { upsert: true }
+            )
+            return res.send({
+                success: true,
+                liked: !alreadyLiked,
+                likesCount: updateLike.length
+            })
+        })
+
+        // app.post('/posts/dislike/:id', async (req, res) => {
+        //     const { id } = req.params
+        //     const post = req.body
+        //     const result = await database.collection('posts').updateOne({ _id: ObjectId(id) }, { $inc: { dislikes: 1 } })
+        //     res.send(result)
+        // })
+
+        // Creating a Comment
+        app.post('/comments', async (req, res) => {
+            const comment = req.body
+            const result = await database.collection('comments').insertOne(comment)
+            res.send(result)
+        })
+
+        app.get('/comments', async (req, res) => {
+            const result = await database.collection('comments').find().toArray()
+            res.send(result)
+        })
+
+        app.get('/comments/:id', async (req, res) => {
+            const { id } = req.params
+            const result = await database.collection('comments').findOne({ _id: ObjectId(id) })
+            res.send(result)
+        })
+
+        app.put('/comments/:id', async (req, res) => {
+            const { id } = req.params
+            const comment = req.body
+            const result = await database.collection('comments').updateOne({ _id: ObjectId(id) }, { $set: comment })
+            res.send(result)
         })
 
 
