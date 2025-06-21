@@ -75,26 +75,37 @@ async function run() {
         })
 
         app.get('/post', async (req, res) => {
-            const result = await database.collection('posts').find().toArray()
+            const result = await postCollection.find().toArray()
             res.send(result)
         })
         // Get single post by id
-        // app.get('/single-post/:id', async (req, res) => {
-        //     const { id } = req.params
-        //     const result = await database.collection('posts').findOne({ _id: ObjectId(id) })
-        //     res.send(result)
-        // })
-
-        app.put('/posts/:id', async (req, res) => {
+        app.get('/post/single-post/:id', async (req, res) => {
             const { id } = req.params
-            const post = req.body
-            const result = await database.collection('posts').updateOne({ _id: ObjectId(id) }, { $set: post })
+            const query = { _id: new ObjectId(id) }
+            const result = await postCollection.findOne(query)
             res.send(result)
         })
 
-        app.delete('/posts/:id', async (req, res) => {
+        // Update single post by id
+        app.patch('/post/update-single-post/:id', async (req, res) => {
             const { id } = req.params
-            const result = await database.collection('posts').deleteOne({ _id: ObjectId(id) })
+            const filter = { _id: new ObjectId(id) }
+            const updateInfo = req.body
+            const updateData = {
+                $set: {
+                    title: updateInfo?.title,
+                    details: updateInfo?.details,
+                }
+            }
+            const result = await postCollection.updateOne(filter, updateData)
+            res.send(result)
+        })
+
+        // Delete a single post
+        app.delete('/post/delete-single-post/:id', async (req, res) => {
+            const { id } = req.params
+            const query = { _id: new ObjectId(id) }
+            const result = await postCollection.deleteOne(query)
             res.send(result)
         })
 
