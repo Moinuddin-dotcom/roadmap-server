@@ -109,6 +109,7 @@ async function run() {
             res.send(result)
         })
 
+        // Add like and remove like from a post
         app.patch('/posts/like/:id', async (req, res) => {
             const { id } = req.params
             const { userEmail } = req.body
@@ -137,37 +138,61 @@ async function run() {
             })
         })
 
-        // app.post('/posts/dislike/:id', async (req, res) => {
-        //     const { id } = req.params
-        //     const post = req.body
-        //     const result = await database.collection('posts').updateOne({ _id: ObjectId(id) }, { $inc: { dislikes: 1 } })
-        //     res.send(result)
-        // })
-
-        // Creating a Comment
-        app.post('/comments', async (req, res) => {
-            const comment = req.body
-            const result = await database.collection('comments').insertOne(comment)
-            res.send(result)
-        })
-
-        app.get('/comments', async (req, res) => {
-            const result = await database.collection('comments').find().toArray()
-            res.send(result)
-        })
-
-        app.get('/comments/:id', async (req, res) => {
+        // Add a Comment
+        app.patch('/posts/add-comment/:id', async (req, res) => {
             const { id } = req.params
-            const result = await database.collection('comments').findOne({ _id: ObjectId(id) })
+            const postId = { _id: new ObjectId(id) }
+            const commentInfo = req.body
+            const post = await postCollection.findOne(postId)
+            if (!post) {
+                return res.status(404).send({ message: "Post not found" });
+            }
+
+            const newComment = {
+                _id: new ObjectId(),
+                commentInfo,
+                createdAt: new Date()
+            };
+
+            await postCollection.updateOne(
+                postId,
+                { $push: { comments: newComment } },
+                { upsert: true }
+            )
+            res.send({ message: "Comment added successfully" });
+        })
+
+        // Update Post comment by using comment id
+        app.patch('/post/update-comment/:postId/:commentId', async (req, res) => {
+            const { postId, commentId } = req.params
+            // const filterPostID = { _id: new ObjectId(postId) }
+            // const filterCommentId = { _id: new ObjectId(commentId) }
+            const { comment } = req.body
+            if (!comment) return res.status(400).send({ message: "Updated comment required" });
+            // const updateData = {
+            //     $set: {
+            //         // title: updateInfo?.title,
+            //         comments: comment,
+            //     }
+            // }
+            const result = await postCollection.updateOne({ _id: new ObjectId(postId), "comments._id": new ObjectId(commentId) },
+                {
+                    $set: { "comments.$.commentInfo.commentInfo.comment": comment }
+                })
             res.send(result)
         })
 
-        app.put('/comments/:id', async (req, res) => {
-            const { id } = req.params
-            const comment = req.body
-            const result = await database.collection('comments').updateOne({ _id: ObjectId(id) }, { $set: comment })
-            res.send(result)
-        })
+        // Delete a Post comment by using comment id
+        app.delete('/post/delete-comment/:postId/:commentId', async (req, res) => {
+            const { postId, commentId } = req.params;
+
+            const result = await postCollection.updateOne(
+                { _id: new ObjectId(postId) },
+                { $pull: { comments: { _id: new ObjectId(commentId) } } }
+            );
+
+            res.send(result);
+        });
 
 
 
