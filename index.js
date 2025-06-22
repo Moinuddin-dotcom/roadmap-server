@@ -7,9 +7,17 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const port = process.env.PORT || 8002
 
+const corsOption = {
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+    credentials: true,
+    optionalSuccessStatus: 200,
+}
+
+
 // middleware
-app.use(cors())
+app.use(cors(corsOption))
 app.use(express.json())
+app.use(cookieParser())
 
 
 
@@ -25,6 +33,18 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
+
+// verifyToken a middleware
+const verifyToken = (req, res, next) => {
+    const token = req.cookies?.token
+    if (!token) return res.status(401).send({ message: "Unauthorized access" })
+    jwt.verify(token, process.env.SECRET_KEY, (err, decoded) => {
+        if (err) return res.status(403).send({ message: "Unauthorized access" })
+        req.user = decoded
+    })
+
+    next()
+}
 
 async function run() {
     try {
@@ -69,15 +89,35 @@ async function run() {
 
         // Creating a Post
         app.post('/post', async (req, res) => {
-            const data = req.body
-            const result = await postCollection.insertOne(data)
+            const postData = req.body
+            const result = await postCollection.insertOne(postData)
             res.send(result)
+        })
+        // Get all post and sort 
+        app.get('/post', async (req, res) => {
+            const { sortBy, sortOrder = 'asc', category } = req.query;
+
+            let query = {};
+            let options = {};
+            if (category && ['TO DO', 'In Progress', 'Completed'].includes(category)) {
+                query.category = category;
+            }
+            if (sortBy === 'likes') {
+                options.sort = { 'likes.length': sortOrder === 'asc' ? 1 : -1 };
+            }
+            try {
+                const result = await postCollection.find(query, options).toArray();
+                // console.log('Sorted Result:', result.map(post => ({ title: post.title, likesCount: post.likes?.length || 0 })));
+                res.send(result);
+            } catch (error) {
+                console.error('Error fetching posts:', error);
+                res.status(500).send({ error: 'Failed to fetch posts' });
+            }
         })
 
-        app.get('/post', async (req, res) => {
-            const result = await postCollection.find().toArray()
-            res.send(result)
-        })
+
+
+
         // Get single post by id
         app.get('/post/single-post/:id', async (req, res) => {
             const { id } = req.params
@@ -95,6 +135,7 @@ async function run() {
                 $set: {
                     title: updateInfo?.title,
                     details: updateInfo?.details,
+                    category: updateInfo?.category,
                 }
             }
             const result = await postCollection.updateOne(filter, updateData)
@@ -185,7 +226,6 @@ async function run() {
         // Delete a Post comment by using comment id
         app.delete('/post/delete-comment/:postId/:commentId', async (req, res) => {
             const { postId, commentId } = req.params;
-
             const result = await postCollection.updateOne(
                 { _id: new ObjectId(postId) },
                 { $pull: { comments: { _id: new ObjectId(commentId) } } }
