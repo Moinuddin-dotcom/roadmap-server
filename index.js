@@ -8,7 +8,7 @@ const cookieParser = require('cookie-parser');
 const port = process.env.PORT || 8002
 
 const corsOption = {
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'https://roadmap-ruby.vercel.app'],
     credentials: true,
     optionsSuccessStatus: 200,
 }
