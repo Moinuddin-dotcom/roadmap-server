@@ -10,7 +10,7 @@ const port = process.env.PORT || 8002
 const corsOption = {
     origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
     credentials: true,
-    optionalSuccessStatus: 200,
+    optionsSuccessStatus: 200,
 }
 
 
@@ -54,6 +54,36 @@ async function run() {
         const userCollection = database.collection('users')
         const postCollection = database.collection('posts')
 
+        //jwt token
+        app.post('/jwt', (req, res) => {
+            try {
+                const { email } = req.body
+                if (!email) return res.status(400).send({ message: 'Email is required' });
+                // create token
+                const token = jwt.sign({ email }, process.env.SECRET_KEY, { expiresIn: '1h' })
+                console.log(token)
+                res.cookie('token', token, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV == 'production',
+                    sameSite: process.env.NODE_ENV == 'production' ? 'none' : 'strict'
+                }).send({ success: true })
+            } catch (error) {
+                console.error('JWT Error:', error);
+                res.status(500).send({ message: 'Failed to generate token', error: error.message });
+            }
+        })
+
+        // clear jst token
+        app.get('/logout', async (req, res) => {
+            res.clearCookie('token', {
+                maxAge: 0,
+                secure: process.env.NODE_ENV == 'production',
+                sameSite: process.env.NODE_ENV == 'production' ? 'none' : 'strict'
+            }).send({ success: true })
+        })
+
+
+
         // save all logged in user in the database
         app.post('/users', async (req, res) => {
             const userInfo = req.body
@@ -71,7 +101,7 @@ async function run() {
         })
 
         // get user role by email
-        app.get('/users/role/:email', async (req, res) => {
+        app.get('/users/role/:email', verifyToken, async (req, res) => {
             const email = req.params.email
             // console.log(email)
             const query = { email }
@@ -81,20 +111,20 @@ async function run() {
         })
 
         // Get Single User by email
-        app.get('/users/singleUser/:email', async (req, res) => {
+        app.get('/users/singleUser/:email', verifyToken, async (req, res) => {
             const { email } = req.params
             const result = await userCollection.findOne({ email })
             res.send(result);
         })
 
         // Creating a Post
-        app.post('/post', async (req, res) => {
+        app.post('/post', verifyToken, async (req, res) => {
             const postData = req.body
             const result = await postCollection.insertOne(postData)
             res.send(result)
         })
         // Get all post and sort 
-        app.get('/post', async (req, res) => {
+        app.get('/post', verifyToken, async (req, res) => {
             const { sortBy, sortOrder = 'asc', category } = req.query;
 
             let query = {};
@@ -107,7 +137,6 @@ async function run() {
             }
             try {
                 const result = await postCollection.find(query, options).toArray();
-                // console.log('Sorted Result:', result.map(post => ({ title: post.title, likesCount: post.likes?.length || 0 })));
                 res.send(result);
             } catch (error) {
                 console.error('Error fetching posts:', error);
@@ -119,7 +148,7 @@ async function run() {
 
 
         // Get single post by id
-        app.get('/post/single-post/:id', async (req, res) => {
+        app.get('/post/single-post/:id', verifyToken, async (req, res) => {
             const { id } = req.params
             const query = { _id: new ObjectId(id) }
             const result = await postCollection.findOne(query)
@@ -127,7 +156,7 @@ async function run() {
         })
 
         // Update single post by id
-        app.patch('/post/update-single-post/:id', async (req, res) => {
+        app.patch('/post/update-single-post/:id', verifyToken, async (req, res) => {
             const { id } = req.params
             const filter = { _id: new ObjectId(id) }
             const updateInfo = req.body
@@ -143,7 +172,7 @@ async function run() {
         })
 
         // Delete a single post
-        app.delete('/post/delete-single-post/:id', async (req, res) => {
+        app.delete('/post/delete-single-post/:id', verifyToken, async (req, res) => {
             const { id } = req.params
             const query = { _id: new ObjectId(id) }
             const result = await postCollection.deleteOne(query)
@@ -151,7 +180,7 @@ async function run() {
         })
 
         // Add like and remove like from a post
-        app.patch('/posts/like/:id', async (req, res) => {
+        app.patch('/posts/like/:id', verifyToken, async (req, res) => {
             const { id } = req.params
             const { userEmail } = req.body
             if (!userEmail) return res.status(400).send({ message: "No user email provided" });
@@ -180,7 +209,7 @@ async function run() {
         })
 
         // Add a Comment
-        app.patch('/posts/add-comment/:id', async (req, res) => {
+        app.patch('/posts/add-comment/:id', verifyToken, async (req, res) => {
             const { id } = req.params
             const postId = { _id: new ObjectId(id) }
             const commentInfo = req.body
@@ -204,18 +233,10 @@ async function run() {
         })
 
         // Update Post comment by using comment id
-        app.patch('/post/update-comment/:postId/:commentId', async (req, res) => {
+        app.patch('/post/update-comment/:postId/:commentId', verifyToken, async (req, res) => {
             const { postId, commentId } = req.params
-            // const filterPostID = { _id: new ObjectId(postId) }
-            // const filterCommentId = { _id: new ObjectId(commentId) }
             const { comment } = req.body
             if (!comment) return res.status(400).send({ message: "Updated comment required" });
-            // const updateData = {
-            //     $set: {
-            //         // title: updateInfo?.title,
-            //         comments: comment,
-            //     }
-            // }
             const result = await postCollection.updateOne({ _id: new ObjectId(postId), "comments._id": new ObjectId(commentId) },
                 {
                     $set: { "comments.$.commentInfo.commentInfo.comment": comment }
@@ -224,7 +245,7 @@ async function run() {
         })
 
         // Delete a Post comment by using comment id
-        app.delete('/post/delete-comment/:postId/:commentId', async (req, res) => {
+        app.delete('/post/delete-comment/:postId/:commentId', verifyToken, async (req, res) => {
             const { postId, commentId } = req.params;
             const result = await postCollection.updateOne(
                 { _id: new ObjectId(postId) },
